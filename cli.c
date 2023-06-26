@@ -72,6 +72,13 @@ typedef struct
 	pager * p;	
 }table;
 
+typedef struct
+{
+	table * t;	
+	uint32_t row_num;	
+	bool end_of_table; // indicates the position one past the last element
+}cursor;
+
 const uint32_t ID_SIZE = size_of_attribute(row, id);
 const uint32_t USERNAME_SIZE = size_of_attribute(row, username);
 const uint32_t EMAIL_SIZE = size_of_attribute(row, email);
@@ -96,6 +103,30 @@ void close_input_buffer(inputBuffer* input_buffer)
 {
 	free(input_buffer->buffer);
 	free(input_buffer);
+}
+
+cursor * table_start(table * t)
+{	
+	cursor * c = malloc(sizeof(cursor));	
+	c->t = t;	
+	c->row_num = 0;
+	c->end_of_table = (t->num_rows == 0);
+	return c;
+}
+
+void cursor_advance(cursor * c)
+{
+	c->row_num += 1;
+	if(c->row_num >= c->t->num_rows) c->end_of_table = true;
+}
+
+cursor * table_end(table * t)
+{
+	cursor * c = malloc(sizeof(cursor));
+	c->t = t;
+	c->row_num = t->num_rows;
+	c->end_of_table = true;
+	return c;
 }
 
 void * get_page(pager * p, uint32_t page_num)
@@ -146,10 +177,11 @@ void deserialize_row(void * src, row* dest)
 	memcpy(&(dest->email), src+EMAIL_OFFSET, EMAIL_SIZE);
 }
 
-void * row_slot(table * t, uint32_t row_num)
+void * cursor_value(cursor * c)
 {
+	uint32_t row_num = c->row_num;
 	uint32_t page_num = row_num / ROWS_PER_PAGE;
-	void * page = get_page(t->p, page_num);
+	void * page = get_page(c->t->p, page_num);
 	uint32_t row_offset = row_num % ROWS_PER_PAGE;
 	uint32_t byte_offset = row_offset * ROW_SIZE;
 	return page + byte_offset;
@@ -314,19 +346,24 @@ executeResult execute_insert(statement * exp, table * t)
 {
 	if(t->num_rows >= TABLE_MAX_ROWS) return EXECUTE_TABLE_FULL;
 	row * row_to_insert = &(exp->row_to_insert);
-	serialize_row(row_to_insert, row_slot(t, t->num_rows));
+	cursor * c = table_end(t);
+	serialize_row(row_to_insert, cursor_value(c));
 	t->num_rows += 1;
+	free(c);
 	return EXECUTE_SUCCESS;
 }
 
 executeResult execute_select(statement * exp, table * t)
 {
+	cursor * c = table_start(t);
 	row r;	
-	for(uint32_t i = 0; i<t->num_rows; i++)
+	while(!(c->end_of_table))
 	{
-		deserialize_row(row_slot(t, i), &r);
+		deserialize_row(cursor_value(c), &r);
 		print_row(&r);
+		cursor_advance(c);
 	}
+	free(c);
 	return EXECUTE_SUCCESS;
 }
 
