@@ -56,6 +56,7 @@ typedef struct
 typedef enum
 {
 	EXECUTE_SUCCESS,
+	EXECUTE_DUPLICATE_KEY,
 	EXECUTE_TABLE_FULL
 }executeResult;
 
@@ -166,8 +167,21 @@ void * leaf_node_value (void * node, uint32_t cell_num)
 	return leaf_node_cell(node, cell_num) + LEAF_NODE_KEY_SIZE;
 }
 
+nodeType get_node_type(void * node)
+{
+	uint8_t value = *((uint8_t *)(node + NODE_TYPE_OFFSET));
+	return (nodeType)value;
+}
+
+void set_node_type(void * node, nodeType type)
+{
+	uint8_t value = type;
+	*((uint8_t *)(node + NODE_TYPE_OFFSET)) = value;
+}
+
 void initialize_leaf_node (void * node)
 {
+	set_node_type(node, NODE_LEAF);
 	*leaf_node_num_cells(node) = 0;
 }
 
@@ -224,6 +238,7 @@ cursor * table_start(table * t)
 	return c;
 }
 
+/*
 cursor * table_end(table * t)
 {
 	cursor * c = malloc(sizeof(cursor));
@@ -234,6 +249,44 @@ cursor * table_end(table * t)
 	c->cell_num = num_cells;
 	c->end_of_table = true;
 	return c;
+}
+*/
+
+/*
+return the position of the given key
+if key is not present, return the position where it should be inserted
+*/
+
+cursor * leaf_node_find(table * t, uint32_t page_num, uint32_t key)
+{
+	void * node = get_page(t->p, page_num);
+	uint32_t num_cells = *leaf_node_num_cells(node);
+	cursor * c = malloc(sizeof(cursor));
+	c->t = t;
+	c->page_num = page_num;
+	// bin search
+	uint32_t l = 0, r = num_cells;
+	while(l+1 < r)
+	{
+		uint32_t mid = (l+r)/2;
+		uint32_t key_at_mid = *leaf_node_key(node, mid);
+		if(key >= key_at_mid) l = mid;	
+		else r = mid;
+	}	
+	c->cell_num = l;	
+	return c;
+}
+
+cursor * table_find(table * t, uint32_t key)
+{
+	uint32_t root_page_num = t->root_page_num;
+	void * root_node = get_page(t->p, root_page_num);
+	if(get_node_type(root_node) == NODE_LEAF) return leaf_node_find(t, root_page_num, key);
+	else	
+	{
+		printf("search node not implemented yet.\n");
+		exit(EXIT_FAILURE);
+	}
 }
 
 void cursor_advance(cursor * c)
@@ -270,16 +323,6 @@ void * cursor_value(cursor * c)
 	return leaf_node_value(page, c->cell_num);
 }
 
-/*
-table * new_table()
-{
-	table * t = (table *)malloc(sizeof(table));
-	t->num_rows = 0;
-	for(uint32_t i = 0; i<TABLE_MAX_PAGES; i++) t->pages[i] = NULL;
-	return t;
-}
-*/
-
 pager * pager_open(const char * filename)
 {
 	int fd = open(filename, O_RDWR|O_CREAT, S_IWUSR|S_IRUSR);
@@ -301,14 +344,6 @@ pager * pager_open(const char * filename)
 	for(uint32_t i = 0; i<TABLE_MAX_PAGES; i++) p->pages[i] = NULL;
 	return p;
 }
-
-/*
-void free_table(table * t)
-{
-	for(int i = 0; t->pages[i]; i++) free(t->pages[i]);
-	free(t);
-}
-*/
 
 table * db_open(const char * filename)
 {
@@ -357,20 +392,6 @@ void db_close(table * t)
 		free(p->pages[i]);	
 		p->pages[i] = NULL;	
 	}
-	/*
-	// there may be a partial page to write to the eof 
-	uint32_t num_additional_rows = t->num_rows % ROWS_PER_PAGE;	
-	if(num_additional_rows > 0)
-	{
-		uint32_t page_num = num_full_pages;
-		if(p->pages[page_num] != NULL)
-		{
-			pager_flush(p, page_num, num_additional_rows * ROW_SIZE);
-			free(p->pages[page_num]);
-			p->pages[page_num] = NULL;
-		}
-	}
-	*/
 	int result = close(p->file_descriptor);
 	if(result == -1)
 	{
@@ -473,9 +494,16 @@ prepareResult prepare_statement(inputBuffer* input_buffer, statement * exp)
 executeResult execute_insert(statement * exp, table * t)
 {
 	void * node = get_page(t->p, t->root_page_num);
+	uint32_t num_cells = (*leaf_node_num_cells(node));
 	if((*leaf_node_num_cells(node)) >= LEAF_NODE_MAX_CELLS) return EXECUTE_TABLE_FULL;
 	row * row_to_insert = &(exp->row_to_insert);
-	cursor * c = table_end(t);
+	uint32_t key_to_insert = row_to_insert->id;
+	cursor * c = table_find(t, key_to_insert);
+	if(c->cell_num < num_cells)
+	{
+		uint32_t key_at_index = *leaf_node_key(node, c->cell_num);
+		if(key_at_index == key_to_insert) return EXECUTE_DUPLICATE_KEY;
+	}
 	leaf_node_insert(c, row_to_insert->id, row_to_insert);
 	free(c);
 	return EXECUTE_SUCCESS;
@@ -572,6 +600,9 @@ int main(int argc, char * argv[])
 		{
 			case (EXECUTE_SUCCESS):
 				printf("Executed.\n");
+				break;
+			case (EXECUTE_DUPLICATE_KEY):	
+				printf("Error: Duplicate key.\n");
 				break;
 			case (EXECUTE_TABLE_FULL):
 				printf("Error: Table full.\n");
