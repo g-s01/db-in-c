@@ -369,16 +369,36 @@ cursor * leaf_node_find(table * t, uint32_t page_num, uint32_t key)
 	return c;
 }
 
+cursor * internal_node_find(table * t, uint32_t page_num, uint32_t key)
+{
+	void * node = get_page(t->p, page_num);
+	uint32_t num_keys = *internal_node_num_keys(node);
+	// binary search to find index of child to search
+	uint32_t l = -1, r = num_keys+1;	
+	while(l+1<r)
+	{
+		uint32_t mid = l+(r-l)/2;
+		uint32_t key_to_right = *internal_node_key(node, mid);
+		if(key_to_right >= key) r = mid;
+		else l = mid;
+	}
+	uint32_t child_num = *internal_node_child(node, r);
+	void * child = get_page(t->p, child_num);	
+	switch(get_node_type(child))
+	{
+		case NODE_LEAF:
+			return leaf_node_find(t, child_num, key);
+		case NODE_INTERNAL:
+			return internal_node_find(t, child_num, key);
+	}
+}
+
 cursor * table_find(table * t, uint32_t key)
 {
 	uint32_t root_page_num = t->root_page_num;
 	void * root_node = get_page(t->p, root_page_num);
 	if(get_node_type(root_node) == NODE_LEAF) return leaf_node_find(t, root_page_num, key);
-	else	
-	{
-		printf("search node not implemented yet.\n");
-		exit(EXIT_FAILURE);
-	}
+	else return internal_node_find(t, root_page_num, key);
 }
 
 void cursor_advance(cursor * c)
