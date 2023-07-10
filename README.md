@@ -25,6 +25,7 @@ introducing two functionalities to the database, namely `select` and `insert`.
 3. Then execute the file using: `./cli name-of-db`
 4. Example of insertion:
 5. Example of selection:
+6. To exit, execute: `./exit`
 
 # Credits
 
