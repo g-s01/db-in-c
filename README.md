@@ -23,9 +23,9 @@ introducing two functionalities to the database, namely `select` and `insert`.
 `git clone https://github.com/g-s01/db-in-c`
 2. Then compile the file using: `gcc cli.c -o cli`
 3. Then execute the file using: `./cli name-of-db`
-4. Example of insertion:
-5. Example of selection:
-6. To exit, execute: `./exit`
+4. Example of insertion: ![insert image](./assets/insert.png)
+5. Example of selection: ![insert image](./assets/select.png)
+6. To exit, execute: `.exit`
 
 # Credits
 
