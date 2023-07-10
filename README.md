@@ -22,7 +22,7 @@ introducing two functionalities to the database, namely `select` and `insert`.
 1. One can download the project by executing:
 `git clone https://github.com/g-s01/db-in-c`
 2. Then compile the file using: `gcc cli.c -o cli`
-3. Then execute the file using: `./cli`
+3. Then execute the file using: `./cli name-of-db`
 4. Example of insertion:
 5. Example of selection:
 
